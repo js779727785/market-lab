@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A股与黄金决策实验室</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand-block">
+          <div class="brand-mark">ML</div>
+          <div>
+            <strong>A股与黄金决策实验室</strong>
+            <span>Market Lab</span>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="overview"><i data-lucide="layout-dashboard"></i><span>总览</span></button>
+          <button class="nav-item" data-view="stocks"><i data-lucide="list-filter"></i><span>A股机会</span></button>
+          <button class="nav-item" data-view="gold"><i data-lucide="landmark"></i><span>黄金</span></button>
+          <button class="nav-item" data-view="positions"><i data-lucide="briefcase-business"></i><span>持仓助手</span></button>
+          <button class="nav-item" data-view="events"><i data-lucide="radio-tower"></i><span>事件</span></button>
+          <button class="nav-item" data-view="backtests"><i data-lucide="chart-no-axes-combined"></i><span>回测</span></button>
+          <button class="nav-item" data-view="research"><i data-lucide="flask-conical"></i><span>研究飞轮</span></button>
+          <button class="nav-item" data-view="ledger"><i data-lucide="shield-check"></i><span>预测账本</span></button>
+        </nav>
+        <div class="sidebar-foot">
+          <span id="mode-badge" class="evidence-badge muted">读取中</span>
+          <small>自动实盘交易：关闭</small>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">可审计预测与决策</p>
+            <h1 id="page-title">研究总览</h1>
+          </div>
+          <div class="topbar-actions">
+            <span id="generated-at" class="timestamp">--</span>
+            <button id="refresh-button" class="icon-button" title="刷新数据" aria-label="刷新数据"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </header>
+
+        <section id="global-alert" class="alert-band hidden" aria-live="polite"></section>
+
+        <section class="view active" data-view-panel="overview">
+          <div class="metric-strip">
+            <article><span>严格预测</span><strong id="strict-count">--</strong></article>
+            <article><span>研究预测</span><strong id="research-count">--</strong></article>
+            <article><span>账本校验</span><strong id="ledger-valid">--</strong></article>
+            <article><span>回测案例</span><strong id="case-count">--</strong></article>
+          </div>
+          <div class="overview-grid">
+            <section class="workspace-panel wide">
+              <div class="section-heading"><div><p class="eyebrow">全市场候选</p><h2>A股机会排序</h2></div><span class="section-status">研究证据</span></div>
+              <div class="table-wrap"><table><thead><tr><th>标的</th><th>行动</th><th>上涨概率</th><th>预期收益</th><th>买入区间</th><th>失效位</th><th>证据</th></tr></thead><tbody id="opportunity-rows"></tbody></table></div>
+            </section>
+            <section class="workspace-panel">
+              <div class="section-heading"><div><p class="eyebrow">Au99.99</p><h2>黄金判断</h2></div><span id="gold-action" class="action-badge">--</span></div>
+              <div id="gold-summary" class="detail-list"></div>
+            </section>
+            <section class="workspace-panel">
+              <div class="section-heading"><div><p class="eyebrow">历史回放</p><h2>净收益轨迹</h2></div><span class="section-status">演示</span></div>
+              <canvas id="backtest-chart" width="720" height="260" aria-label="回测净收益轨迹"></canvas>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="stocks">
+          <section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">A股</p><h2>候选明细与反证</h2></div></div><div id="stocks-detail"></div></section>
+        </section>
+
+        <section class="view" data-view-panel="gold">
+          <section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">国内金与国际因子</p><h2>黄金预测快照</h2></div></div><div id="gold-detail"></div></section>
+        </section>
+
+        <section class="view" data-view-panel="positions">
+          <div class="position-layout">
+            <form id="position-form" class="workspace-panel form-grid">
+              <div class="section-heading"><div><p class="eyebrow">风险预算</p><h2>持仓评估</h2></div></div>
+              <label>标的<select name="asset_id"><option value="600000.SH">600000.SH</option></select></label>
+              <label>成本价<input name="average_cost" type="number" step="0.01" value="10.20" required /></label>
+              <label>数量<input name="quantity" type="number" step="100" value="1000" required /></label>
+              <label>可用现金<input name="available_cash" type="number" step="1000" value="100000" /></label>
+              <label>最大亏损比例<input name="max_loss_fraction" type="number" step="0.005" value="0.02" min="0.001" max="1" /></label>
+              <label>行业上限<input name="sector_limit" type="number" step="0.05" value="0.30" min="0.05" max="1" /></label>
+              <button class="primary-button" type="submit"><i data-lucide="calculator"></i><span>计算建议</span></button>
+            </form>
+            <section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">输出</p><h2>仓位与风险动作</h2></div></div><div id="position-result" class="empty-state">等待输入</div></section>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="events"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">事实与因果通道</p><h2>事件审计</h2></div></div><div id="event-list"></div></section></section>
+        <section class="view" data-view-panel="backtests"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">Purged walk-forward</p><h2>回测与成本压力</h2></div></div><div id="backtest-detail"></div></section></section>
+        <section class="view" data-view-panel="research"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">冠军 / 挑战者</p><h2>研究飞轮</h2></div></div><div id="research-detail"></div></section></section>
+        <section class="view" data-view-panel="ledger"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">防篡改</p><h2>预测账本</h2></div></div><div id="ledger-detail"></div></section></section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+[promotion]
+bootstrap_confidence = 0.95
+min_bootstrap_lower_bound = 0.0
+max_fdr_q_value = 0.05
+require_positive_base_cost_return = true
+require_positive_double_cost_return = true
+max_calibration_degradation = 0.0
+max_tail_loss_degradation = 0.0
+min_regime_win_fraction = 0.60
+
+[shadow]
+a_share_min_samples = 60
+gold_min_samples = 30
+require_frozen_forecasts = true
+automatic_activation = false
+
+[abstention]
+buy_probability = 0.65
+sell_probability = 0.35
+max_model_disagreement = 0.20
+min_regime_coverage = 0.10

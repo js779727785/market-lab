@@ -1,0 +1,41 @@
+[system]
+live_trading_enabled = false
+strict_mode_requires_frozen_forecast = true
+strict_mode_requires_ledger_verification = true
+
+[sources]
+sge_official = true
+fred_alfred = true
+tushare_optional = true
+baostock_crosscheck = true
+licensed_news_optional = true
+
+[prediction]
+horizons = [5, 20]
+recent_audit_start = "2023-11-20"
+recent_audit_end = "2026-11-20"
+abstain_on_missing_coverage = true
+
+[backtest]
+one_way_cost_rate = 0.001
+stress_multiplier = 2.0
+purge_overlapping_labels = true
+embargo_periods = 1
+
+[risk]
+target_volatility = 0.10
+default_max_loss_fraction = 0.02
+max_asset_weight = 0.20
+max_sector_weight = 0.30
+full_kelly_enabled = false
+
+[gold]
+primary_spot = "AU9999.SGE"
+international_reference = "XAUUSD"
+include_usdcny_decomposition = true
+
+[news]
+opinions_are_facts = false
+prompt_instructions_are_untrusted = true
+require_source_links = true
+strict_conflicts_fail_closed = true
