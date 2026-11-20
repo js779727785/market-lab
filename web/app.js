@@ -142,21 +142,37 @@ document.getElementById("position-form").addEventListener("submit", async (event
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const payload = Object.fromEntries(form.entries());
-  ["average_cost", "quantity", "available_cash", "max_loss_fraction", "sector_limit"].forEach((key) => { payload[key] = Number(payload[key]); });
+  ["average_cost", "quantity", "available_cash", "account_value", "other_assets_value", "max_loss_fraction", "max_asset_weight", "sector_limit"].forEach((key) => {
+    if (payload[key] === "") delete payload[key]; else payload[key] = Number(payload[key]);
+  });
   payload.horizon_days = 20;
   payload.allow_add = true;
   payload.allow_scale = true;
+  const isLiveGold = payload.asset_id === "AU9999.SGE";
+  const endpoint = isLiveGold ? "/api/live/positions/evaluate" : "/api/positions/evaluate";
   try {
-    const result = await fetchJson("/api/positions/evaluate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await fetchJson(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     document.getElementById("position-result").className = "detail-list";
-    document.getElementById("position-result").innerHTML = detailRows([
+    const rows = isLiveGold ? [
+      ["动作", result.advice.action],
+      ["官方 Au99.99 日线价", Number(result.quote.price).toFixed(2)],
+      ["行情日期", result.quote.session_date],
+      ["当前回撤", pct(result.position.drawdown_fraction)],
+      ["回本所需涨幅", pct(result.position.break_even_return_fraction)],
+      ["资产占比", pct(result.position.asset_weight)],
+      ["建议目标克数", result.advice.target_quantity ?? "--"],
+      ["预测状态", result.forecast.action],
+      ["原因", result.advice.reasons.join(" / ")],
+      ["限制", result.limitations.join(" / ") || "无"],
+    ] : [
       ["动作", result.advice.action],
       ["目标仓位", pct(result.advice.target_weight)],
       ["目标数量", result.advice.target_quantity ?? "--"],
       ["最大风险金额", result.advice.max_loss_amount == null ? "--" : Number(result.advice.max_loss_amount).toFixed(2)],
       ["约束", result.advice.binding_constraints.join(" / ") || "无"],
       ["原因", result.advice.reasons.join(" / ")],
-    ]);
+    ];
+    document.getElementById("position-result").innerHTML = detailRows(rows);
   } catch (error) { showError(error); }
 });
 

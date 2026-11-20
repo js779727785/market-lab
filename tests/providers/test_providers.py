@@ -1,11 +1,11 @@
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
 
 from market_lab.contracts import EvidenceGrade
-from market_lab.providers.base import FetchRequest
+from market_lab.providers.base import FetchRequest, ProviderError
 from market_lab.providers.files import FileProvider
 from market_lab.providers.fred import FredProvider
 from market_lab.providers.sge import SgeGoldProvider
@@ -105,6 +105,8 @@ async def test_sge_provider_parses_official_au9999_html() -> None:
     """
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["user-agent"].startswith("Mozilla/")
+        assert request.headers["referer"] == "https://www.sge.com.cn/"
         return httpx.Response(200, text=html)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -128,6 +130,68 @@ async def test_sge_provider_parses_official_au9999_html() -> None:
     assert records[0].record_key == "AU9999.SGE:2026-11-20"
     assert records[0].evidence_grade == EvidenceGrade.OFFICIAL_PRIMARY
     assert records[0].payload["weighted_average"] == 903.2
+
+
+@pytest.mark.asyncio
+async def test_sge_provider_builds_fresh_latest_au9999_quote_with_previous_close() -> None:
+    html = """
+    <table><tbody>
+    <tr>
+      <td>2026-11-19</td><td>Au99.99</td><td>890.00</td><td>901.00</td>
+      <td>888.00</td><td>899.00</td><td>5.00</td><td>0.56%</td>
+      <td>895.20</td><td>1200.0</td><td>1074000000</td><td>-</td>
+    </tr>
+    <tr>
+      <td>2026-11-20</td><td>Au99.99</td><td>900.00</td><td>910.00</td>
+      <td>895.00</td><td>905.00</td><td>5.00</td><td>0.56%</td>
+      <td>903.20</td><td>1234.5</td><td>1115000000</td><td>-</td>
+    </tr>
+    </tbody></table>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = SgeGoldProvider(
+        client=client,
+        fetched_at=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+    )
+
+    quote = await provider.fetch_latest(
+        now=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+    )
+
+    assert quote.asset_id == "AU9999.SGE"
+    assert quote.instrument == "Au99.99"
+    assert quote.price == 905.0
+    assert quote.previous_close == 899.0
+    assert quote.evidence_grade == EvidenceGrade.OFFICIAL_PRIMARY
+    assert quote.is_fresh is True
+    assert quote.source_uri.startswith(SgeGoldProvider.endpoint)
+
+    stale_quote = await provider.fetch_latest(
+        now=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+        max_age=timedelta(hours=1),
+    )
+    assert stale_quote.is_fresh is False
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_sge_provider_wraps_transport_errors_as_provider_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = SgeGoldProvider(client=client)
+
+    with pytest.raises(ProviderError, match="SGE request failed"):
+        await provider.fetch_latest(
+            now=datetime(2026, 11, 20, 10, 0, tzinfo=UTC),
+        )
+
+    await client.aclose()
 
 
 @pytest.mark.asyncio

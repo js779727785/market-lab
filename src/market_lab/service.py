@@ -13,7 +13,14 @@ from pydantic import BaseModel, ConfigDict
 from .backtest.engine import BacktestEngine
 from .backtest.splits import SplitConfig
 from .config import Settings
-from .contracts import AssetClass, EvidenceGrade, ForecastDecision, PositionInput, RecordEnvelope
+from .contracts import (
+    ActionState,
+    AssetClass,
+    EvidenceGrade,
+    ForecastDecision,
+    PositionInput,
+    RecordEnvelope,
+)
 from .decisions.assistant import HoldingPrediction, PositionAssistant
 from .decisions.levels import CalibratedPrediction, DecisionContext, DecisionEngine
 from .decisions.portfolio import PortfolioState
@@ -25,6 +32,7 @@ from .labels import build_forward_labels
 from .ledger import ForecastLedger, LedgerIntegrityError, SettlementOutcome
 from .models.baselines import MomentumBaseline
 from .provenance import canonical_sha256
+from .providers.sge import SgeGoldProvider
 from .quality import QualityGate
 from .snapshots import SnapshotBundle
 from .storage import MarketStore
@@ -245,6 +253,138 @@ class MarketLabService:
             "asset_id": position.asset_id,
             "evidence_mode": decision.evidence_mode,
             "advice": advice.model_dump(mode="json"),
+        }
+
+    async def evaluate_live_position(self, payload: dict[str, Any]) -> dict[str, Any]:
+        asset_id = str(payload["asset_id"])
+        if asset_id != "AU9999.SGE":
+            raise KeyError(asset_id)
+
+        provider = SgeGoldProvider()
+        try:
+            quote = await provider.fetch_latest()
+        finally:
+            await provider.aclose()
+
+        current_price = quote.price
+        quantity = float(payload["quantity"])
+        average_cost = float(payload["average_cost"])
+        available_cash = float(payload.get("available_cash", 0.0))
+        market_value = current_price * quantity
+        other_assets_value = float(payload.get("other_assets_value", 0.0))
+        account_value = float(
+            payload.get("account_value") or market_value + available_cash + other_assets_value
+        )
+        if account_value < market_value:
+            raise ValueError("account_value must cover the current Au99.99 market value")
+
+        asset_weight = market_value / account_value
+        max_asset_weight = float(payload.get("max_asset_weight", 0.2))
+        drawdown_fraction = current_price / average_cost - 1.0
+        break_even_return_fraction = average_cost / current_price - 1.0
+        concentration_excess = max(asset_weight - max_asset_weight, 0.0)
+        target_weight = min(asset_weight, max_asset_weight)
+        target_quantity = math.floor(target_weight * account_value / current_price)
+        max_loss_fraction = payload.get("max_loss_fraction")
+        max_loss_amount = (
+            account_value * float(max_loss_fraction) if max_loss_fraction is not None else None
+        )
+        horizon_days = int(payload.get("horizon_days", 20))
+
+        reasons: list[str] = [
+            "official_sge_quote_verified",
+            "live_forecast_not_available",
+            "news_evidence_not_loaded",
+        ]
+        binding_constraints: list[str] = []
+        if not quote.is_fresh:
+            reasons.append("quote_stale_or_outside_freshness_window")
+        if concentration_excess > 0:
+            reasons.append("asset_concentration_above_limit")
+            binding_constraints.append("max_asset_weight")
+        if drawdown_fraction <= -0.2:
+            reasons.append("large_drawdown_requires_no_averaging")
+            binding_constraints.append("no_averaging_down_without_live_forecast")
+
+        action = ActionState.ABSTAIN
+        if quote.is_fresh and concentration_excess > 0:
+            action = ActionState.REDUCE
+        elif quote.is_fresh and concentration_excess == 0:
+            action = ActionState.ABSTAIN
+
+        forecast_id = canonical_sha256(
+            {
+                "asset_id": asset_id,
+                "quote_source_uri": quote.source_uri,
+                "fetched_at": quote.fetched_at,
+                "horizon_days": horizon_days,
+            }
+        )
+        forecast_reasons = ("live_model_not_loaded", "news_evidence_not_loaded")
+        forecast_counterevidence = (
+            "official_daily_quote_is_not_a_directional_forecast",
+            "no_current_point_in_time_news_feature_set",
+        )
+        advice = {
+            "action": action.value,
+            "target_weight": target_weight if action is ActionState.REDUCE else None,
+            "target_quantity": target_quantity if action is ActionState.REDUCE else None,
+            "max_loss_amount": max_loss_amount,
+            "research_only": True,
+            "reasons": tuple(reasons),
+            "counterevidence": forecast_counterevidence,
+            "binding_constraints": tuple(binding_constraints),
+            "buy_zone": None,
+            "reduce_zone": None,
+            "expires_at": quote.fetched_at + timedelta(days=horizon_days),
+        }
+        return {
+            "schema_version": 1,
+            "asset_id": asset_id,
+            "instrument": quote.instrument,
+            "evidence_mode": "live_risk_only" if quote.is_fresh else "live_unavailable",
+            "quote": quote.model_dump(mode="json"),
+            "position": {
+                "average_cost": average_cost,
+                "quantity": quantity,
+                "current_price": current_price,
+                "market_value": market_value,
+                "account_value": account_value,
+                "asset_weight": asset_weight,
+                "max_asset_weight": max_asset_weight,
+                "concentration_excess_fraction": concentration_excess,
+                "drawdown_fraction": drawdown_fraction,
+                "break_even_return_fraction": break_even_return_fraction,
+                "target_weight": target_weight,
+                "target_quantity": target_quantity,
+            },
+            "forecast": {
+                "forecast_id": forecast_id,
+                "action": ActionState.ABSTAIN.value,
+                "status": "abstain",
+                "prediction_available": False,
+                "evidence_mode": "unavailable",
+                "valid_until": quote.fetched_at + timedelta(days=horizon_days),
+                "reasons": forecast_reasons,
+                "counterevidence": forecast_counterevidence,
+            },
+            "evidence": {
+                "quote": {
+                    "status": "verified" if quote.is_fresh else "stale",
+                    "source": quote.source_uri,
+                    "grade": quote.evidence_grade.value,
+                },
+                "historical_model": {
+                    "status": "unavailable",
+                    "reason": "live_model_not_loaded",
+                },
+                "news": {
+                    "status": "unavailable",
+                    "reason": "news_evidence_not_loaded",
+                },
+            },
+            "advice": advice,
+            "limitations": quote.limitations,
         }
 
     def run_demo(self, *, force: bool = False) -> DemoWorkflowSummary:

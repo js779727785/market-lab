@@ -56,6 +56,25 @@ uv run market-lab run-daily --demo
 
 缺少授权、历史新闻覆盖或足够冻结影子样本时，受影响输出保持 `research` 或 `ABSTAIN`。
 
+## 实时 Au99.99 持仓评估
+
+系统提供独立的 `POST /api/live/positions/evaluate` 路径，只接受上金所 `Au99.99`（内部标识 `AU9999.SGE`），不读取演示快照，也不会自动下单。请求至少包含成本价和持有克数；可选提供账户总资产、其他资产市值和单一资产上限：
+
+```json
+{
+  "asset_id": "AU9999.SGE",
+  "average_cost": 1248,
+  "quantity": 1000,
+  "available_cash": 0,
+  "account_value": 760000,
+  "max_asset_weight": 0.2
+}
+```
+
+该路径从上金所官方页面读取最近可用的 `Au99.99` 日线收盘价，并返回报价来源、会话日期、前收、抓取时间、鲜度、回撤、回本所需涨幅、资产集中度和可审计的风险动作。官方日线价不是盘中成交价；模型和当前时点新闻证据未建立或未通过门禁时，`forecast.action` 保持 `abstain`，`advice` 只允许给出基于集中度等硬约束的风险动作，不把风险动作伪装成方向预测。
+
+实时路径的证据模式为 `live_risk_only`；过期、缺失或来源不合格时降级为 `live_unavailable`，不会用合成演示数据补齐。
+
 ## 验证
 
 ```bash

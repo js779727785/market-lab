@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .providers.base import ProviderError
 from .service import MarketLabService
 
 
@@ -21,6 +22,18 @@ class PositionEvaluationRequest(BaseModel):
     allow_add: bool = True
     allow_scale: bool = True
     sector_limit: float | None = Field(default=None, gt=0, le=1)
+
+
+class LivePositionEvaluationRequest(BaseModel):
+    asset_id: str = Field(min_length=1)
+    average_cost: float = Field(gt=0)
+    quantity: float = Field(gt=0)
+    available_cash: float = Field(default=0, ge=0)
+    other_assets_value: float = Field(default=0, ge=0)
+    account_value: float | None = Field(default=None, gt=0)
+    max_asset_weight: float = Field(default=0.2, gt=0, le=1)
+    horizon_days: int = Field(default=20, gt=0)
+    max_loss_fraction: float | None = Field(default=None, gt=0, le=1)
 
 
 def create_app(root: Path | None = None) -> FastAPI:
@@ -56,6 +69,20 @@ def create_app(root: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=f"unknown asset: {exc.args[0]}") from exc
+
+    @app.post("/api/live/positions/evaluate")
+    async def evaluate_live_position(request: LivePositionEvaluationRequest) -> dict[str, Any]:
+        try:
+            return await service.evaluate_live_position(request.model_dump())
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unsupported live asset: {exc.args[0]}",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/events")
     def events() -> dict[str, Any]:
